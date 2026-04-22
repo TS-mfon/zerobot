@@ -2,6 +2,9 @@
 
 import asyncio
 import logging
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler
 
@@ -59,5 +62,22 @@ def main() -> None:
     app.run_polling(drop_pending_updates=True)
 
 
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'{"status":"ok","bot":"zerobot"}')
+    def log_message(self, *args):
+        pass  # Suppress logs
+
+
+def start_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
+
+
 if __name__ == "__main__":
+    # Start health server in background thread (for Render)
+    threading.Thread(target=start_health_server, daemon=True).start()
     main()
