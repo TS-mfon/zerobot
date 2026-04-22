@@ -1,4 +1,4 @@
-"""Handlers for /buy_compute and /job_status commands."""
+"""Handlers for /buy_compute, /job_status, and compute inline callbacks."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from bot.services.compute_service import buy_compute, get_job_status
-from bot.services.wallet_service import has_wallet
+from bot.services.compute_service import buy_compute, confirm_compute_purchase, get_job_status
+from bot.services.wallet_service import get_user, has_wallet, require_balance
 from bot.utils.formatting import error_message
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,19 @@ async def buy_compute_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not await has_wallet(tid):
             await update.message.reply_text(
                 "You need a wallet first. Use /connect to create one."
+            )
+            return
+
+        # Balance gate -- user must have funded their wallet
+        user = await get_user(tid)
+        has_funds = await require_balance(tid)
+        if not has_funds:
+            await update.message.reply_text(
+                "Insufficient balance!\n\n"
+                "Please fund your wallet first:\n"
+                f"Address: <code>{user.wallet_address}</code>\n\n"
+                "Send A0GI tokens to this address, then try again.",
+                parse_mode="HTML",
             )
             return
 
@@ -39,6 +52,14 @@ async def buy_compute_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                     return
 
         job = await buy_compute(tid, gpu_type=gpu_type, duration_hours=hours)
+
+        # Store pending job info in user_data so the callback can retrieve it
+        context.user_data["pending_compute_job"] = {
+            "job_id": job.job_id,
+            "gpu_type": job.gpu_type,
+            "duration_hours": job.duration_hours,
+            "cost_a0gi": job.cost_a0gi,
+        }
 
         keyboard = InlineKeyboardMarkup(
             [
@@ -60,6 +81,58 @@ async def buy_compute_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as exc:
         logger.exception("Error in /buy_compute")
         await update.message.reply_text(error_message(str(exc)))
+
+
+async def buy_compute_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Confirm / Cancel inline button presses for compute purchases."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data or ""
+    tid = update.effective_user.id
+
+    try:
+        if data == "compute_cancel":
+            await query.edit_message_text("Purchase cancelled.")
+            # Clean up stored pending job
+            context.user_data.pop("pending_compute_job", None)
+            return
+
+        if data.startswith("compute_confirm:"):
+            job_id = data.split(":", 1)[1]
+
+            # Re-verify balance before executing the real transaction
+            user = await get_user(tid)
+            has_funds = await require_balance(tid)
+            if not has_funds:
+                await query.edit_message_text(
+                    "Insufficient balance!\n\n"
+                    f"Please fund your wallet:\n{user.wallet_address}\n\n"
+                    "Send A0GI tokens, then try /buy_compute again."
+                )
+                context.user_data.pop("pending_compute_job", None)
+                return
+
+            await query.edit_message_text("Processing your compute purchase...")
+
+            # Execute the actual on-chain purchase
+            result = await confirm_compute_purchase(tid, job_id)
+
+            await query.edit_message_text(
+                f"Compute purchase confirmed!\n\n"
+                f"Job ID: {result.job_id}\n"
+                f"Status: {result.status}\n"
+                f"GPU: {result.gpu_type}\n"
+                f"Duration: {result.duration_hours}h\n"
+                f"Cost: {result.cost_a0gi} A0GI\n\n"
+                f"Use /job_status {result.job_id} to track progress."
+            )
+            context.user_data.pop("pending_compute_job", None)
+            return
+
+    except Exception as exc:
+        logger.exception("Error in compute callback")
+        await query.edit_message_text(error_message(str(exc)))
 
 
 async def job_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

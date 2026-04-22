@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler
 
 from bot.config import settings
 from bot.db.database import init_db
@@ -12,7 +12,7 @@ from bot.db.database import init_db
 from bot.handlers.start import start_command, help_command
 from bot.handlers.wallet import connect_command, balance_command, portfolio_command
 from bot.handlers.storage import store_command, retrieve_command, files_command
-from bot.handlers.compute import buy_compute_command, job_status_command
+from bot.handlers.compute import buy_compute_command, buy_compute_callback, job_status_command
 from bot.handlers.staking import stake_command
 from bot.handlers.explorer import explorer_command, tx_command
 from bot.handlers.alerts import alerts_command
@@ -51,6 +51,9 @@ def main() -> None:
     app.add_handler(CommandHandler("prices", prices_command))
     app.add_handler(CommandHandler("alerts", alerts_command))
     app.add_handler(CommandHandler("faucet", faucet_command))
+
+    # Register inline keyboard callback handler (e.g. Confirm/Cancel on /buy_compute)
+    app.add_handler(CallbackQueryHandler(buy_compute_callback, pattern=r"^compute_"))
 
     logger.info("ZeroBot starting...")
     app.run_polling(drop_pending_updates=True)

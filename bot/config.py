@@ -9,8 +9,8 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = Field(..., description="Telegram Bot API token")
     og_rpc_url: str = Field(
-        default="https://evmrpc-testnet.0g.ai",
-        description="0G EVM-compatible JSON-RPC endpoint",
+        default="https://evmrpc.0g.ai",
+        description="0G EVM-compatible JSON-RPC endpoint (mainnet)",
     )
     wallet_encryption_key: str = Field(
         ..., description="Fernet-compatible base64 key for wallet encryption"
@@ -19,14 +19,18 @@ class Settings(BaseSettings):
         default="zerobot.db", description="SQLite database file path"
     )
 
-    # Optional overrides
-    og_chain_id: int = Field(default=16600, description="0G testnet chain ID")
+    # 0G mainnet settings
+    og_chain_id: int = Field(default=480, description="0G mainnet chain ID")
     og_explorer_url: str = Field(
-        default="https://chainscan-newton.0g.ai",
+        default="https://chainscan.0g.ai",
         description="0G block explorer base URL",
     )
     og_faucet_url: str = Field(
-        default="https://faucet.0g.ai", description="0G testnet faucet URL"
+        default="https://faucet.0g.ai", description="0G faucet URL"
+    )
+    og_storage_indexer: str = Field(
+        default="https://indexer-storage.0g.ai",
+        description="0G decentralised storage indexer URL",
     )
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

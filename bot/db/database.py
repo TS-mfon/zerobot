@@ -39,10 +39,19 @@ async def init_db() -> None:
                 file_hash     TEXT NOT NULL,
                 file_size     INTEGER DEFAULT 0,
                 uploaded_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                tx_hash       TEXT,
                 FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
             )
             """
         )
+        # Migration: add tx_hash column to existing file_records tables
+        try:
+            await db.execute(
+                "ALTER TABLE file_records ADD COLUMN tx_hash TEXT"
+            )
+        except Exception:
+            # Column already exists -- safe to ignore
+            pass
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS alerts (

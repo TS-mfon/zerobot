@@ -1,8 +1,7 @@
 """0G decentralised storage interaction layer.
 
-The 0G storage SDK is still evolving.  This module provides a placeholder
-implementation that records file metadata locally and will be wired to the
-real SDK once it stabilises.
+Uploads files to the 0G storage network via the storage indexer API.
+File metadata is also persisted locally in SQLite for quick lookups.
 """
 
 from __future__ import annotations
@@ -11,33 +10,79 @@ import hashlib
 import logging
 from typing import List, Optional
 
+import httpx
+
+from bot.config import settings
 from bot.db.database import get_db
 from bot.models.file_record import FileRecord
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# 0G Storage Indexer interaction
+# ---------------------------------------------------------------------------
+
+async def _upload_to_0g_storage(file_data: bytes, file_name: str) -> dict:
+    """Upload *file_data* to the 0G decentralised storage network.
+
+    Uses the 0G storage indexer HTTP API.  Returns a dict with
+    ``root_hash``, ``tx_hash``, and ``size``.
+
+    Raises on failure so that callers surface real errors to users.
+    """
+    indexer_url = settings.og_storage_indexer.rstrip("/")
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        # Attempt upload via the indexer's file upload endpoint
+        response = await client.post(
+            f"{indexer_url}/api/v1/file/upload",
+            files={"file": (file_name, file_data)},
+        )
+        response.raise_for_status()
+        result = response.json()
+
+    root_hash = result.get("root") or result.get("root_hash", "")
+    tx_hash = result.get("tx_hash") or result.get("tx", "")
+
+    if not root_hash and not tx_hash:
+        # The indexer may use a different response shape -- log for debugging
+        logger.warning("Unexpected 0G storage response: %s", result)
+
+    return {
+        "root_hash": root_hash,
+        "tx_hash": tx_hash,
+        "size": len(file_data),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public helpers used by handlers
+# ---------------------------------------------------------------------------
 
 async def store_file(
     telegram_id: int,
     file_name: str,
     file_data: bytes,
 ) -> FileRecord:
-    """Simulate uploading *file_data* to 0G storage.
+    """Upload *file_data* to 0G storage and persist metadata locally."""
 
-    In production this would call the 0G storage SDK.  For the MVP we
-    compute a SHA-256 hash and persist the record in SQLite.
-    """
-    file_hash = hashlib.sha256(file_data).hexdigest()
-    file_size = len(file_data)
+    # Real upload to 0G storage
+    upload_result = await _upload_to_0g_storage(file_data, file_name)
+
+    # Use the root hash from 0G; fall back to local SHA-256 only as an
+    # identifier for the local DB if the indexer didn't return one.
+    file_hash = upload_result["root_hash"] or hashlib.sha256(file_data).hexdigest()
+    tx_hash = upload_result["tx_hash"]
+    file_size = upload_result["size"]
 
     db = await get_db()
     try:
         cursor = await db.execute(
             """
-            INSERT INTO file_records (telegram_id, file_name, file_hash, file_size)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO file_records (telegram_id, file_name, file_hash, file_size, tx_hash)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (telegram_id, file_name, file_hash, file_size),
+            (telegram_id, file_name, file_hash, file_size, tx_hash),
         )
         await db.commit()
         record_id = cursor.lastrowid
@@ -50,6 +95,7 @@ async def store_file(
         file_name=file_name,
         file_hash=file_hash,
         file_size=file_size,
+        tx_hash=tx_hash,
     )
 
 

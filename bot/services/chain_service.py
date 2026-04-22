@@ -1,4 +1,4 @@
-"""Thin async wrapper around web3.py for the 0G EVM chain."""
+"""Thin async wrapper around web3.py for the 0G EVM chain (mainnet)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 # Module-level Web3 instance (HTTP provider, synchronous under the hood but
 # fast enough for RPC calls wrapped in asyncio.to_thread when needed).
 w3 = Web3(Web3.HTTPProvider(settings.og_rpc_url))
+
+# Expose the chain ID so other modules can use it for signing
+CHAIN_ID: int = settings.og_chain_id
 
 
 def is_connected() -> bool:
@@ -76,3 +79,9 @@ def send_raw_transaction(signed_tx: bytes) -> str:
 def estimate_gas(tx_params: Dict[str, Any]) -> int:
     """Estimate gas for a transaction dict."""
     return w3.eth.estimate_gas(tx_params)
+
+
+def get_nonce(address: str) -> int:
+    """Return the current transaction count (nonce) for *address*."""
+    checksum = Web3.to_checksum_address(address)
+    return w3.eth.get_transaction_count(checksum)
