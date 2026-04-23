@@ -1,27 +1,55 @@
-"""0G compute marketplace interaction.
+"""0G compute marketplace service.
 
-The 0G compute API is not yet publicly documented.  This module provides
-the buy / confirm / status flow.  ``confirm_compute_purchase`` is where
-the real on-chain transaction would be broadcast once the 0G compute
-marketplace contract ABI is available.
+Since the 0G compute marketplace contract ABI isn't publicly standardized
+yet, compute purchases are implemented as native OG token transfers to a
+configurable compute provider address (OG_COMPUTE_PROVIDER_ADDRESS).
+
+This performs REAL on-chain transactions. No simulation, no mocks.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import time
 from dataclasses import dataclass
 from typing import Optional
 
+from bot.services import wallet_service
+from bot.services import chain_service as chain_service_module
+from bot.services.chain_service import send_native, get_transaction_receipt
+
 logger = logging.getLogger(__name__)
+
+# GPU pricing (OG per hour). Update these when 0G publishes compute prices.
+GPU_PRICES = {
+    "A100": 0.5,
+    "H100": 1.2,
+    "V100": 0.25,
+    "T4": 0.1,
+    "CPU": 0.05,
+}
+
+
+def _provider_address() -> str:
+    """Return configured compute provider address, or empty string."""
+    return os.environ.get("OG_COMPUTE_PROVIDER_ADDRESS", "").strip()
+
+
+def _compute_cost(gpu_type: str, duration_hours: int) -> float:
+    """Calculate cost in OG for the given GPU and duration."""
+    rate = GPU_PRICES.get(gpu_type.upper(), GPU_PRICES["A100"])
+    return round(rate * duration_hours, 6)
 
 
 @dataclass
 class ComputeJob:
     job_id: str
-    status: str  # "pending" | "confirmed" | "running" | "completed" | "failed"
+    status: str  # "pending" | "submitted" | "confirmed" | "failed"
     gpu_type: str
     duration_hours: int
-    cost_a0gi: float
+    cost_og: float
+    tx_hash: str = ""
 
 
 async def buy_compute(
@@ -29,65 +57,112 @@ async def buy_compute(
     gpu_type: str = "A100",
     duration_hours: int = 1,
 ) -> ComputeJob:
-    """Create a *pending* compute purchase request.
+    """Prepare a pending compute purchase for user confirmation.
 
-    This does NOT execute a transaction -- it prepares the order for the
-    user to confirm via the inline keyboard.
+    Does NOT execute the transaction yet - returns a pending job
+    that the user confirms via the inline keyboard.
     """
+    gpu_type = gpu_type.upper()
+    if gpu_type not in GPU_PRICES:
+        raise ValueError(
+            f"Unknown GPU type: {gpu_type}. Choose from {list(GPU_PRICES.keys())}"
+        )
+    if duration_hours <= 0 or duration_hours > 720:
+        raise ValueError("Duration must be 1-720 hours.")
+
+    cost = _compute_cost(gpu_type, duration_hours)
+    job_id = f"job_{telegram_id}_{int(time.time())}"
+
     logger.info(
-        "Compute purchase requested: user=%s gpu=%s hours=%s",
-        telegram_id,
-        gpu_type,
-        duration_hours,
+        "Pending compute job created: user=%s gpu=%s hours=%s cost=%s OG",
+        telegram_id, gpu_type, duration_hours, cost,
     )
-    cost = duration_hours * 0.5
-    job_id = f"job_{telegram_id}_{gpu_type}_{duration_hours}h"
     return ComputeJob(
         job_id=job_id,
         status="pending",
         gpu_type=gpu_type,
         duration_hours=duration_hours,
-        cost_a0gi=cost,
+        cost_og=cost,
     )
 
 
 async def confirm_compute_purchase(
     telegram_id: int,
     job_id: str,
+    gpu_type: str,
+    duration_hours: int,
 ) -> ComputeJob:
-    """Execute the confirmed compute purchase.
+    """Execute a REAL on-chain transaction for the compute purchase."""
+    cost = _compute_cost(gpu_type, duration_hours)
+    provider = _provider_address()
 
-    When the 0G compute marketplace smart contract is publicly available
-    this function will build, sign, and broadcast the real on-chain
-    transaction using the user's wallet.  Until then we mark the job as
-    confirmed so no simulated/fake tx hash is ever returned.
-    """
-    logger.info("Confirming compute purchase: user=%s job=%s", telegram_id, job_id)
+    if not provider or provider == "0x0000000000000000000000000000000000000000":
+        logger.warning("OG_COMPUTE_PROVIDER_ADDRESS not configured - cannot execute")
+        return ComputeJob(
+            job_id=job_id,
+            status="failed",
+            gpu_type=gpu_type,
+            duration_hours=duration_hours,
+            cost_og=cost,
+        )
 
-    # TODO: Replace with real on-chain transaction once the 0G compute
-    # marketplace contract ABI is published.  The flow will be:
-    #   1. Load user private key via wallet_service.get_private_key()
-    #   2. Build the contract call (marketplace.buy_compute(...))
-    #   3. Sign and broadcast via chain_service.send_raw_transaction()
-    #   4. Wait for receipt and return real tx hash
+    try:
+        user = await wallet_service.get_user(telegram_id)
+        if user is None:
+            raise RuntimeError("User has no wallet")
 
-    return ComputeJob(
-        job_id=job_id,
-        status="confirmed",
-        gpu_type="A100",
-        duration_hours=1,
-        cost_a0gi=0.5,
-    )
+        private_key = await wallet_service.get_private_key(telegram_id)
+        if not private_key:
+            raise RuntimeError("Wallet not found")
+
+        tx_hash = await send_native(
+            private_key=private_key,
+            from_address=user.wallet_address or "",
+            to_address=provider,
+            amount_og=cost,
+        )
+
+        logger.info(
+            "Compute purchase broadcast: user=%s job=%s tx=%s",
+            telegram_id, job_id, tx_hash,
+        )
+        return ComputeJob(
+            job_id=job_id,
+            status="submitted",
+            gpu_type=gpu_type,
+            duration_hours=duration_hours,
+            cost_og=cost,
+            tx_hash=tx_hash,
+        )
+    except Exception as e:
+        logger.exception("Compute purchase failed: %s", e)
+        return ComputeJob(
+            job_id=job_id,
+            status="failed",
+            gpu_type=gpu_type,
+            duration_hours=duration_hours,
+            cost_og=cost,
+        )
 
 
-async def get_job_status(job_id: str) -> Optional[ComputeJob]:
-    """Query the status of a compute job."""
-    logger.info("Job status query: %s", job_id)
-    # TODO: Look up real job state from the 0G compute marketplace
-    return ComputeJob(
-        job_id=job_id,
-        status="pending",
-        gpu_type="A100",
-        duration_hours=1,
-        cost_a0gi=0.5,
-    )
+async def get_job_status(job_id: str, tx_hash: str = "") -> Optional[ComputeJob]:
+    """Check the on-chain status of a compute job by its tx hash."""
+    if not tx_hash:
+        return None
+    try:
+        receipt = get_transaction_receipt(tx_hash)
+        if receipt is None:
+            status = "pending"
+        else:
+            status = "confirmed" if receipt.get("status") == 1 else "failed"
+        return ComputeJob(
+            job_id=job_id,
+            status=status,
+            gpu_type="",
+            duration_hours=0,
+            cost_og=0.0,
+            tx_hash=tx_hash,
+        )
+    except Exception as e:
+        logger.error("Status check failed: %s", e)
+        return None

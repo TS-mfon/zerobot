@@ -58,7 +58,7 @@ async def buy_compute_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "job_id": job.job_id,
             "gpu_type": job.gpu_type,
             "duration_hours": job.duration_hours,
-            "cost_a0gi": job.cost_a0gi,
+            "cost_og": job.cost_og,
         }
 
         keyboard = InlineKeyboardMarkup(
@@ -71,12 +71,13 @@ async def buy_compute_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
         await update.message.reply_text(
-            f"Compute Purchase Request\n\n"
+            f"<b>Compute Purchase Request</b>\n\n"
             f"GPU: {job.gpu_type}\n"
             f"Duration: {job.duration_hours}h\n"
-            f"Estimated cost: {job.cost_a0gi} A0GI\n\n"
-            f"Confirm this purchase?",
+            f"Estimated cost: {job.cost_og} OG\n\n"
+            f"Confirm this purchase? An on-chain transaction will be broadcast.",
             reply_markup=keyboard,
+            parse_mode="HTML",
         )
     except Exception as exc:
         logger.exception("Error in /buy_compute")
@@ -113,20 +114,40 @@ async def buy_compute_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data.pop("pending_compute_job", None)
                 return
 
-            await query.edit_message_text("Processing your compute purchase...")
+            # Retrieve stored job info for the purchase
+            pending = context.user_data.get("pending_compute_job") or {}
+            gpu_type = pending.get("gpu_type", "A100")
+            hours = pending.get("duration_hours", 1)
 
-            # Execute the actual on-chain purchase
-            result = await confirm_compute_purchase(tid, job_id)
+            await query.edit_message_text("⏳ Broadcasting transaction on 0G mainnet...")
 
-            await query.edit_message_text(
-                f"Compute purchase confirmed!\n\n"
-                f"Job ID: {result.job_id}\n"
-                f"Status: {result.status}\n"
-                f"GPU: {result.gpu_type}\n"
-                f"Duration: {result.duration_hours}h\n"
-                f"Cost: {result.cost_a0gi} A0GI\n\n"
-                f"Use /job_status {result.job_id} to track progress."
+            result = await confirm_compute_purchase(
+                telegram_id=tid,
+                job_id=job_id,
+                gpu_type=gpu_type,
+                duration_hours=hours,
             )
+
+            if result.status == "failed":
+                await query.edit_message_text(
+                    f"❌ <b>Purchase failed.</b>\n\n"
+                    f"This usually means the compute provider address isn't configured, "
+                    f"or there was a network error. Contact support or try again later.",
+                    parse_mode="HTML",
+                )
+            else:
+                msg = (
+                    f"✅ <b>Compute purchase submitted!</b>\n\n"
+                    f"Job ID: <code>{result.job_id}</code>\n"
+                    f"Status: {result.status}\n"
+                    f"GPU: {result.gpu_type}\n"
+                    f"Duration: {result.duration_hours}h\n"
+                    f"Cost: {result.cost_og} OG\n"
+                )
+                if result.tx_hash:
+                    msg += f"Tx: <code>{result.tx_hash}</code>\n"
+                msg += f"\nUse /job_status {result.job_id} to check progress."
+                await query.edit_message_text(msg, parse_mode="HTML")
             context.user_data.pop("pending_compute_job", None)
             return
 
@@ -160,13 +181,13 @@ async def job_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         status_label = status_emoji_map.get(job.status, job.status)
 
         await update.message.reply_text(
-            f"Job Status\n\n"
-            f"ID: `{job.job_id}`\n"
+            f"<b>Job Status</b>\n\n"
+            f"ID: <code>{job.job_id}</code>\n"
             f"Status: {status_label}\n"
             f"GPU: {job.gpu_type}\n"
             f"Duration: {job.duration_hours}h\n"
-            f"Cost: {job.cost_a0gi} A0GI",
-            parse_mode="Markdown",
+            f"Cost: {job.cost_og} OG",
+            parse_mode="HTML",
         )
     except Exception as exc:
         logger.exception("Error in /job_status")
