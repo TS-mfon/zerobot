@@ -1,6 +1,5 @@
 """ZeroBot entry point -- boots the Telegram bot application."""
 
-import asyncio
 import logging
 import os
 import threading
@@ -10,6 +9,7 @@ from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandle
 
 from bot.config import settings
 from bot.db.database import init_db
+from bot.utils.logging_config import setup_logging
 
 # Handler imports
 from bot.handlers.start import start_command, help_command
@@ -22,20 +22,24 @@ from bot.handlers.alerts import alerts_command
 from bot.handlers.prices import prices_command
 from bot.handlers.faucet import faucet_command
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
+
+
+async def _post_init(application) -> None:
+    """Run async initialization after the bot's event loop is set up."""
+    await init_db()
+    logger.info("Database initialized.")
 
 
 def main() -> None:
     """Build application, register handlers, and start polling."""
-
-    # Initialise the database before the bot starts polling
-    asyncio.run(init_db())
-
-    app = ApplicationBuilder().token(settings.telegram_bot_token).build()
+    app = (
+        ApplicationBuilder()
+        .token(settings.telegram_bot_token)
+        .post_init(_post_init)
+        .build()
+    )
 
     # Register command handlers
     app.add_handler(CommandHandler("start", start_command))
@@ -55,7 +59,7 @@ def main() -> None:
     app.add_handler(CommandHandler("alerts", alerts_command))
     app.add_handler(CommandHandler("faucet", faucet_command))
 
-    # Register inline keyboard callback handler (e.g. Confirm/Cancel on /buy_compute)
+    # Callback handler for inline Confirm/Cancel buttons
     app.add_handler(CallbackQueryHandler(buy_compute_callback, pattern=r"^compute_"))
 
     logger.info("ZeroBot starting...")
@@ -67,8 +71,9 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'{"status":"ok","bot":"zerobot"}')
+
     def log_message(self, *args):
-        pass  # Suppress logs
+        pass  # suppress
 
 
 def start_health_server():
