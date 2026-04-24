@@ -5,6 +5,7 @@ import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler
 
 from bot.config import settings
@@ -12,7 +13,7 @@ from bot.db.database import init_db
 from bot.utils.logging_config import setup_logging
 
 # Handler imports
-from bot.handlers.start import start_command, help_command
+from bot.handlers.start import start_command, help_command, commands_command, BOT_COMMANDS
 from bot.handlers.wallet import connect_command, balance_command, portfolio_command
 from bot.handlers.storage import store_command, retrieve_command, files_command
 from bot.handlers.compute import buy_compute_command, buy_compute_callback, job_status_command
@@ -29,6 +30,9 @@ logger = logging.getLogger(__name__)
 async def _post_init(application) -> None:
     """Run async initialization after the bot's event loop is set up."""
     await init_db()
+    await application.bot.set_my_commands(
+        [BotCommand(command, description) for command, description in BOT_COMMANDS]
+    )
     logger.info("Database initialized.")
 
 
@@ -43,6 +47,7 @@ def main() -> None:
 
     # Register command handlers
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("commands", commands_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("connect", connect_command))
     app.add_handler(CommandHandler("balance", balance_command))

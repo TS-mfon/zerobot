@@ -9,6 +9,26 @@ from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
 
+BOT_COMMANDS = [
+    ("start", "Show the main bot overview"),
+    ("commands", "List available commands"),
+    ("help", "Show the main bot overview"),
+    ("connect", "Create or view your 0G wallet"),
+    ("balance", "Check your A0GI balance"),
+    ("portfolio", "View your full portfolio"),
+    ("store", "Upload a file to 0G Storage"),
+    ("retrieve", "Retrieve a file by hash"),
+    ("files", "List your uploaded files"),
+    ("buy_compute", "Purchase GPU compute"),
+    ("job_status", "Check a compute job"),
+    ("stake", "View staking information"),
+    ("explorer", "Show latest block info"),
+    ("tx", "Look up a transaction"),
+    ("prices", "Show current token prices"),
+    ("alerts", "Manage price alerts"),
+    ("faucet", "Get testnet tokens"),
+]
+
 WELCOME_TEXT = """<b>Welcome to ZeroBot</b> - your gateway to the 0G ecosystem!
 
 Here is what I can do:
@@ -52,4 +72,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command (same output as /start)."""
     logger.info("/help from user %s", update.effective_user.id)
+    await update.message.reply_text(WELCOME_TEXT, parse_mode="HTML")
+
+
+async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /commands command."""
+    logger.info("/commands from user %s", update.effective_user.id)
     await update.message.reply_text(WELCOME_TEXT, parse_mode="HTML")
