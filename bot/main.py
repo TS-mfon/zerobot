@@ -2,8 +2,6 @@
 
 import logging
 import os
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler
@@ -42,8 +40,15 @@ async def _post_init(application) -> None:
     logger.info("Database initialized.")
 
 
+def _webhook_base_url() -> str:
+    return (
+        settings.webhook_base_url.strip()
+        or os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+    )
+
+
 def main() -> None:
-    """Build application, register handlers, and start polling."""
+    """Build application, register handlers, and start polling/webhook."""
     app = (
         ApplicationBuilder()
         .token(settings.telegram_bot_token)
@@ -78,26 +83,21 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(buy_compute_callback, pattern=r"^compute_"))
 
     logger.info("ZeroBot starting...")
+    webhook_base = _webhook_base_url()
+    if webhook_base:
+        token = settings.telegram_bot_token
+        url_path = f"/telegram/{token}"
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.environ.get("PORT", "10000")),
+            url_path=url_path,
+            webhook_url=f"{webhook_base}{url_path}",
+            drop_pending_updates=True,
+        )
+        return
+
     app.run_polling(drop_pending_updates=True)
 
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'{"status":"ok","bot":"zerobot"}')
-
-    def log_message(self, *args):
-        pass  # suppress
-
-
-def start_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    server.serve_forever()
-
-
 if __name__ == "__main__":
-    # Start health server in background thread (for Render)
-    threading.Thread(target=start_health_server, daemon=True).start()
     main()

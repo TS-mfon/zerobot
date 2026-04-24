@@ -48,6 +48,10 @@ class Settings(BaseSettings):
         default="",
         description="Optional ZeroBot mainnet registry contract address",
     )
+    webhook_base_url: str = Field(
+        default="",
+        description="Public HTTPS base URL used for Telegram webhooks on Render",
+    )
     og_compute_provider_tag: str = Field(
         default="0g-mainnet-compute",
         description="Human-readable provider label used in on-chain compute intents",
