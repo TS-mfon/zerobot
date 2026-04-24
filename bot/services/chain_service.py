@@ -120,6 +120,45 @@ async def send_native(
     return h if h.startswith("0x") else "0x" + h
 
 
+async def send_contract_transaction(
+    private_key: str,
+    from_address: str,
+    contract_address: str,
+    abi: list[Dict[str, Any]],
+    function_name: str,
+    args: list[Any],
+    value_og: float = 0.0,
+) -> str:
+    """Call a payable or non-payable contract function and return the tx hash."""
+
+    def _build_sign():
+        from_checksum = Web3.to_checksum_address(from_address)
+        contract_checksum = Web3.to_checksum_address(contract_address)
+        contract = w3.eth.contract(address=contract_checksum, abi=abi)
+        nonce = w3.eth.get_transaction_count(from_checksum)
+        gas_price = int(w3.eth.gas_price * 1.1)
+        tx = contract.functions[function_name](*args).build_transaction(
+            {
+                "from": from_checksum,
+                "nonce": nonce,
+                "value": Web3.to_wei(value_og, "ether"),
+                "gasPrice": gas_price,
+                "chainId": CHAIN_ID,
+            }
+        )
+        try:
+            tx["gas"] = int(w3.eth.estimate_gas(tx) * 1.2)
+        except Exception:
+            tx["gas"] = 250_000
+        signed = Account.sign_transaction(tx, private_key)
+        return signed.raw_transaction
+
+    raw = await asyncio.to_thread(_build_sign)
+    tx_hash = await asyncio.to_thread(w3.eth.send_raw_transaction, raw)
+    h = tx_hash.hex()
+    return h if h.startswith("0x") else "0x" + h
+
+
 async def wait_for_receipt(tx_hash: str, attempts: int = 30, interval: float = 2.0) -> Optional[Dict[str, Any]]:
     """Poll for a receipt up to `attempts * interval` seconds."""
     for _ in range(attempts):
@@ -147,6 +186,7 @@ class _ChainService:
     estimate_gas = staticmethod(estimate_gas)
     get_nonce = staticmethod(get_nonce)
     send_native = staticmethod(send_native)
+    send_contract_transaction = staticmethod(send_contract_transaction)
     wait_for_receipt = staticmethod(wait_for_receipt)
 
 

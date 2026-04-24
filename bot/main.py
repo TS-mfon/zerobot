@@ -17,6 +17,12 @@ from bot.handlers.start import start_command, help_command, commands_command, BO
 from bot.handlers.wallet import connect_command, balance_command, portfolio_command
 from bot.handlers.storage import store_command, retrieve_command, files_command
 from bot.handlers.compute import buy_compute_command, buy_compute_callback, job_status_command
+from bot.handlers.og import (
+    compute_account_command,
+    compute_market_command,
+    models_command,
+    stack_command,
+)
 from bot.handlers.staking import stake_command
 from bot.handlers.explorer import explorer_command, tx_command
 from bot.handlers.alerts import alerts_command
@@ -49,6 +55,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("commands", commands_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("stack", stack_command))
     app.add_handler(CommandHandler("connect", connect_command))
     app.add_handler(CommandHandler("balance", balance_command))
     app.add_handler(CommandHandler("portfolio", portfolio_command))
@@ -57,6 +64,9 @@ def main() -> None:
     app.add_handler(CommandHandler("files", files_command))
     app.add_handler(CommandHandler("buy_compute", buy_compute_command))
     app.add_handler(CommandHandler("job_status", job_status_command))
+    app.add_handler(CommandHandler("compute_market", compute_market_command))
+    app.add_handler(CommandHandler("models", models_command))
+    app.add_handler(CommandHandler("compute_account", compute_account_command))
     app.add_handler(CommandHandler("stake", stake_command))
     app.add_handler(CommandHandler("explorer", explorer_command))
     app.add_handler(CommandHandler("tx", tx_command))

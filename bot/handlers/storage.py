@@ -7,7 +7,12 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from bot.services.storage_service import store_file, retrieve_file, list_files
+from bot.services.storage_service import (
+    anchor_file_onchain,
+    list_files,
+    retrieve_file,
+    store_file,
+)
 from bot.services.wallet_service import get_user, has_wallet, require_balance
 from bot.utils.formatting import error_message
 
@@ -58,10 +63,13 @@ async def store_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         tg_file = await doc.get_file()
         file_bytes = await tg_file.download_as_bytearray()
         record = await store_file(tid, doc.file_name or "unnamed", bytes(file_bytes))
+        anchor_tx = await anchor_file_onchain(tid, record.file_hash, record.file_name)
 
         tx_info = ""
         if record.tx_hash:
             tx_info = f"Tx Hash: `{record.tx_hash}`\n"
+        if anchor_tx:
+            tx_info += f"Anchor Tx: `{anchor_tx}`\n"
 
         await status_msg.edit_text(
             f"File stored on 0G Storage.\n\n"

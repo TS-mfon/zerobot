@@ -15,6 +15,9 @@ import httpx
 from bot.config import settings
 from bot.db.database import get_db
 from bot.models.file_record import FileRecord
+from bot.services.chain_service import send_contract_transaction
+from bot.services.compute_service import ZEROBOT_CONTRACT_ABI
+from bot.services.wallet_service import get_private_key, get_user
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +99,31 @@ async def store_file(
         file_hash=file_hash,
         file_size=file_size,
         tx_hash=tx_hash,
+    )
+
+
+async def anchor_file_onchain(telegram_id: int, file_hash: str, file_name: str) -> Optional[str]:
+    """Anchor a storage root on the ZeroBot registry contract when configured."""
+    contract_address = settings.zerobot_contract_address.strip()
+    if not contract_address:
+        return None
+
+    user = await get_user(telegram_id)
+    if user is None or user.wallet_address is None:
+        return None
+
+    private_key = await get_private_key(telegram_id)
+    if not private_key:
+        return None
+
+    return await send_contract_transaction(
+        private_key=private_key,
+        from_address=user.wallet_address,
+        contract_address=contract_address,
+        abi=ZEROBOT_CONTRACT_ABI,
+        function_name="anchorStorage",
+        args=[file_hash, file_name],
+        value_og=0.0,
     )
 
 

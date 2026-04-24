@@ -13,6 +13,7 @@ BOT_COMMANDS = [
     ("start", "Show the main bot overview"),
     ("commands", "List available commands"),
     ("help", "Show the main bot overview"),
+    ("stack", "Show the live 0G stack used by the bot"),
     ("connect", "Create or view your 0G wallet"),
     ("balance", "Check your A0GI balance"),
     ("portfolio", "View your full portfolio"),
@@ -21,6 +22,9 @@ BOT_COMMANDS = [
     ("files", "List your uploaded files"),
     ("buy_compute", "Purchase GPU compute"),
     ("job_status", "Check a compute job"),
+    ("compute_market", "List 0G Compute mainnet providers"),
+    ("models", "List 0G Compute models"),
+    ("compute_account", "Show 0G Compute CLI account status"),
     ("stake", "View staking information"),
     ("explorer", "Show latest block info"),
     ("tx", "Look up a transaction"),
@@ -44,6 +48,10 @@ Here is what I can do:
 /files - List your uploaded files
 
 <b>Compute</b>
+/stack - Show the live 0G stack
+/compute_market - List 0G Compute mainnet providers
+/models - List 0G Compute models
+/compute_account - Show 0G Compute CLI status
 /buy_compute - Purchase GPU compute
 /job_status - Check a compute job
 
@@ -59,7 +67,7 @@ Here is what I can do:
 /alerts - Manage price alerts
 
 <b>Misc</b>
-/faucet - Get testnet tokens
+/faucet - Get mainnet faucet link
 /help - Show this message"""
 
 

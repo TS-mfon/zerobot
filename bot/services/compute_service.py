@@ -16,10 +16,38 @@ from dataclasses import dataclass
 from typing import Optional
 
 from bot.services import wallet_service
-from bot.services import chain_service as chain_service_module
-from bot.services.chain_service import send_native, get_transaction_receipt
+from bot.config import settings
+from bot.services.chain_service import (
+    get_transaction_receipt,
+    send_contract_transaction,
+    send_native,
+)
 
 logger = logging.getLogger(__name__)
+
+ZEROBOT_CONTRACT_ABI = [
+    {
+        "inputs": [
+            {"internalType": "string", "name": "gpu", "type": "string"},
+            {"internalType": "uint256", "name": "durationHours", "type": "uint256"},
+            {"internalType": "string", "name": "providerTag", "type": "string"},
+        ],
+        "name": "purchaseCompute",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"internalType": "string", "name": "rootHash", "type": "string"},
+            {"internalType": "string", "name": "fileName", "type": "string"},
+        ],
+        "name": "anchorStorage",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+]
 
 # GPU pricing (OG per hour). Update these when 0G publishes compute prices.
 GPU_PRICES = {
@@ -34,6 +62,10 @@ GPU_PRICES = {
 def _provider_address() -> str:
     """Return configured compute provider address, or empty string."""
     return os.environ.get("OG_COMPUTE_PROVIDER_ADDRESS", "").strip()
+
+
+def _contract_address() -> str:
+    return settings.zerobot_contract_address.strip()
 
 
 def _compute_cost(gpu_type: str, duration_hours: int) -> float:
@@ -95,8 +127,12 @@ async def confirm_compute_purchase(
     """Execute a REAL on-chain transaction for the compute purchase."""
     cost = _compute_cost(gpu_type, duration_hours)
     provider = _provider_address()
+    contract_address = _contract_address()
 
-    if not provider or provider == "0x0000000000000000000000000000000000000000":
+    if (
+        not contract_address
+        and (not provider or provider == "0x0000000000000000000000000000000000000000")
+    ):
         logger.warning("OG_COMPUTE_PROVIDER_ADDRESS not configured - cannot execute")
         return ComputeJob(
             job_id=job_id,
@@ -115,12 +151,23 @@ async def confirm_compute_purchase(
         if not private_key:
             raise RuntimeError("Wallet not found")
 
-        tx_hash = await send_native(
-            private_key=private_key,
-            from_address=user.wallet_address or "",
-            to_address=provider,
-            amount_og=cost,
-        )
+        if contract_address:
+            tx_hash = await send_contract_transaction(
+                private_key=private_key,
+                from_address=user.wallet_address or "",
+                contract_address=contract_address,
+                abi=ZEROBOT_CONTRACT_ABI,
+                function_name="purchaseCompute",
+                args=[gpu_type, duration_hours, settings.og_compute_provider_tag],
+                value_og=cost,
+            )
+        else:
+            tx_hash = await send_native(
+                private_key=private_key,
+                from_address=user.wallet_address or "",
+                to_address=provider,
+                amount_og=cost,
+            )
 
         logger.info(
             "Compute purchase broadcast: user=%s job=%s tx=%s",
