@@ -30,7 +30,6 @@ BOT_COMMANDS = [
     ("tx", "Look up a transaction"),
     ("prices", "Show current token prices"),
     ("alerts", "Manage price alerts"),
-    ("faucet", "Get testnet tokens"),
 ]
 
 WELCOME_TEXT = """<b>Welcome to ZeroBot</b> - your gateway to the 0G ecosystem!
@@ -67,7 +66,6 @@ Here is what I can do:
 /alerts - Manage price alerts
 
 <b>Misc</b>
-/faucet - Get mainnet faucet link
 /help - Show this message"""
 
 

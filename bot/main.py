@@ -25,7 +25,6 @@ from bot.handlers.staking import stake_command
 from bot.handlers.explorer import explorer_command, tx_command
 from bot.handlers.alerts import alerts_command
 from bot.handlers.prices import prices_command
-from bot.handlers.faucet import faucet_command
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -77,7 +76,6 @@ def main() -> None:
     app.add_handler(CommandHandler("tx", tx_command))
     app.add_handler(CommandHandler("prices", prices_command))
     app.add_handler(CommandHandler("alerts", alerts_command))
-    app.add_handler(CommandHandler("faucet", faucet_command))
 
     # Callback handler for inline Confirm/Cancel buttons
     app.add_handler(CallbackQueryHandler(buy_compute_callback, pattern=r"^compute_"))
