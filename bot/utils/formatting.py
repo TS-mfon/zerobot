@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from bot.utils.errors import classify_error, support_code
+
 
 def mono(text: str) -> str:
     """Wrap *text* in Telegram monospace (code) markup."""
@@ -41,7 +43,16 @@ def tx_link(tx_hash: str, explorer_url: str) -> str:
 
 def error_message(msg: str, hint: Optional[str] = None) -> str:
     """Return a consistently formatted error message."""
-    text = f"Something went wrong: {msg}"
+    error = RuntimeError(msg)
+    guide = classify_error(error)
+    lines = [
+        guide.title,
+        guide.explanation,
+        "",
+        "What to do next",
+    ]
+    lines.extend(f"- {step}" for step in guide.next_steps)
     if hint:
-        text += f"\n\nHint: {hint}"
-    return text
+        lines.extend(["", f"Hint: {hint}"])
+    lines.extend(["", f"Support code: {support_code(error)}"])
+    return "\n".join(lines)

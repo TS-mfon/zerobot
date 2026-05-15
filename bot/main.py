@@ -25,6 +25,7 @@ from bot.handlers.staking import stake_command
 from bot.handlers.explorer import explorer_command, tx_command
 from bot.handlers.alerts import alerts_command
 from bot.handlers.prices import prices_command
+from bot.utils.errors import error_handler
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ def main() -> None:
 
     # Callback handler for inline Confirm/Cancel buttons
     app.add_handler(CallbackQueryHandler(buy_compute_callback, pattern=r"^compute_"))
+    app.add_error_handler(error_handler)
 
     logger.info("ZeroBot starting...")
     webhook_base = _webhook_base_url()
